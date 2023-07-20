@@ -1,0 +1,256 @@
+# Mattermost with Let's Encrypt in a Docker Swarm
+
+# Author
+# hey, I’m Vladimir Mikhalev, but my friends call me Valdemar.
+
+# My website with detailed IT guides: https://www.heyvaldemar.com/
+# Follow me on YouTube: https://www.youtube.com/channel/UCf85kQ0u1sYTTTyKVpxrlyQ?sub_confirmation=1
+# Follow me on Twitter: https://twitter.com/heyValdemar
+# Follow me on Instagram: https://www.instagram.com/heyvaldemar/
+# Follow me on Facebook: https://www.facebook.com/heyValdemarFB/
+# Follow me on TikTok: https://www.tiktok.com/@heyvaldemar
+# Follow me on LinkedIn: https://www.linkedin.com/in/heyvaldemar/
+# Follow me on GitHub: https://github.com/heyvaldemar
+
+# Communication
+# Chat with IT pros on Discord: https://discord.gg/AJQGCCBcqf
+# Reach me at ask@sre.gg
+
+# Give Thanks
+# Support on GitHub: https://github.com/sponsors/heyValdemar
+# Support on Patreon: https://www.patreon.com/heyValdemar
+# Support on BuyMeaCoffee: https://www.buymeacoffee.com/heyValdemar
+# Support on Ko-fi: https://ko-fi.com/heyValdemar
+# Support on PayPal: https://www.paypal.com/paypalme/heyValdemarCOM
+
+# Install Docker Swarm by following my guide: https://www.heyvaldemar.com/install-docker-swarm-on-ubuntu-server/
+
+# Configure Traefik and create secrets for storing the passwords on the Docker Swarm manager node before applying the configuration.
+# Traefik configuration: https://github.com/heyValdemar/traefik-letsencrypt-docker-swarm
+
+# Create a secret for storing the password for Mattermost database using the command:
+# printf "YourPassword" | docker secret create mattermost-postgres-password -
+
+# Clear passwords from bash history using the command:
+# history -c && history -w
+
+# Run mattermost-restore-application-data.sh on the Docker Swarm worker node where the container for backups is running to restore application data if needed.
+# Run mattermost-restore-database.sh on the Docker Swarm node where the container for backups is running to restore database if needed.
+# Run docker stack ps mattermost | grep mattermost_backups | awk 'NR > 0 {print $4}' on the Docker Swarm manager node to find on which node container for backups is running.
+
+# Deploy Mattermost in a Docker Swarm using the command:
+# docker stack deploy -c mattermost-traefik-letsencrypt-docker-swarm.yml mattermost
+
+version: '3.9'
+
+x-default-opts:
+  &default-opts
+  logging:
+    options:
+      max-size: "10m"
+
+networks:
+  mattermost-network:
+    driver: overlay
+  traefik-network:
+    external: true
+
+volumes:
+  mattermost-data:
+  mattermost-config:
+  mattermost-logs:
+  mattermost-plugins:
+  mattermost-client-plugins:
+  mattermost-bleve-indexes:
+  mattermost-postgres:
+  mattermost-data-backups:
+  mattermost-postgres-backups:
+  traefik-certificates:
+
+secrets:
+  mattermost-postgres-password:
+    external: true
+
+services:
+  postgres:
+    <<: *default-opts
+    # Image tag (replace with yours)
+    image: postgres:14
+    volumes:
+      - mattermost-postgres:/var/lib/postgresql/data
+    environment:
+      # Timezone inside container
+      # A list of these tz database names can be looked up at Wikipedia
+      # https://en.wikipedia.org/wiki/List_of_tz_database_time_zones
+      TZ: America/New_York
+      # Database name (replace with yours)
+      POSTGRES_DB: mattermostdb
+      # Database user (replace with yours)
+      POSTGRES_USER: mattermostdbuser
+      # Database password (replace with yours)
+      POSTGRES_PASSWORD_FILE: /run/secrets/mattermost-postgres-password
+    networks:
+      - mattermost-network
+    secrets:
+      - mattermost-postgres-password
+    security_opt:
+      - no-new-privileges:true
+    read_only: false
+    tmpfs:
+      - /tmp
+      - /var/run/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -h 127.0.0.1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == worker
+      # Container resources (replace with yours)
+      resources:
+        limits:
+          cpus: '0.55'
+          memory: 1G
+        reservations:
+          cpus: '0.35'
+          memory: 512M
+
+  mattermost:
+    <<: *default-opts
+    # Image tag (replace with yours)
+    image: mattermost/mattermost-team-edition:release-7.11
+    volumes:
+      - mattermost-data:/mattermost/data
+      - mattermost-config:/mattermost/config
+      - mattermost-logs:/mattermost/logs
+      - mattermost-plugins:/mattermost/plugins
+      - mattermost-client-plugins:/mattermost/client/plugins
+      - mattermost-bleve-indexes:/mattermost/bleve-indexes
+    environment:
+      # Timezone inside container
+      # A list of these tz database names can be looked up at Wikipedia
+      # https://en.wikipedia.org/wiki/List_of_tz_database_time_zones
+      TZ: America/New_York
+      MM_SQLSETTINGS_DRIVERNAME: postgres
+      # Database name (replace with yours)
+      # Database user (replace with yours)
+      # Database password (replace with yours)
+      MM_SQLSETTINGS_DATASOURCE: postgres://mattermostdbuser:zkhuneTBFxpgvUrtDaKs9XG@postgres:5432/mattermostdb?sslmode=disable&connect_timeout=10
+      # Bleve index (inside the container)
+      MM_BLEVESETTINGS_INDEXDIR: /mattermost/bleve-indexes
+      # Mattermost domain (replace with yours)
+      DOMAIN: mattermost.heyvaldemar.net
+      # Mattermost URL (replace with yours)
+      MM_SERVICESETTINGS_SITEURL: https://mattermost.heyvaldemar.net
+      MM_SERVICESETTINGS_FORWARD80TO443: 'false'
+      MATTERMOST_CONTAINER_READONLY: 'false'
+    networks:
+      - mattermost-network
+      - traefik-network
+    secrets:
+      - mattermost-postgres-password
+    security_opt:
+      - no-new-privileges:true
+    read_only: false
+    tmpfs:
+      - /tmp
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8065/"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 90s
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == worker
+      # Container resources (replace with yours)
+      resources:
+        limits:
+          cpus: '1.55'
+          memory: 2G
+        reservations:
+          cpus: '0.55'
+          memory: 512M
+      labels:
+        - "traefik.enable=true"
+        # Mattermost URL (replace with yours)
+        - "traefik.http.routers.mattermost.rule=Host(`mattermost.heyvaldemar.net`)"
+        - "traefik.http.routers.mattermost.service=mattermost"
+        - "traefik.http.routers.mattermost.entrypoints=websecure"
+        - "traefik.http.services.mattermost.loadbalancer.server.port=8065"
+        - "traefik.http.routers.mattermost.tls=true"
+        - "traefik.http.routers.mattermost.tls.certresolver=letsencrypt"
+        - "traefik.http.services.mattermost.loadbalancer.passhostheader=true"
+        - "traefik.http.routers.mattermost.middlewares=compresstraefik"
+        - “traefik.udp.routers.mm-call-rtr.entrypoints=calls"
+        - "traefik.udp.routers.mm-call-rtr.service=mm-call-svc"
+        - "traefik.udp.services.mm-call-svc.loadBalancer.server.port=8443"
+        - "traefik.http.middlewares.compresstraefik.compress=true"
+    depends_on:
+      - postgres
+
+  backups:
+    <<: *default-opts
+    # Image tag (replace with yours)
+    image: postgres:14
+    # Database backups prune interval (replace with yours). Default is 7 days.
+    # find /srv/mattermost-postgres/backups -type f -mtime +7 | xargs rm -f
+
+    # Application data backups prune interval (replace with yours). Default is 7 days.
+    # find /srv/mattermost-application-data/backups -type f -mtime +7 | xargs rm -f
+
+    # Mattermost backups interval (replace with yours). Default is 1 day.
+    # sleep 24h
+
+    # Run mattermost-restore-application-data.sh on the Docker Swarm worker node where the container for backups is running to restore application data if needed.
+    # Run mattermost-restore-database.sh on the Docker Swarm node where the container for backups is running to restore database if needed.
+    # Run docker stack ps mattermost | grep mattermost_backups | awk 'NR > 0 {print $4}' on the Docker Swarm manager node to find on which node container for backups is running.
+    command: sh -c 'sleep 30m
+             && while true; do
+             PGPASSWORD="$$(cat $$POSTGRES_PASSWORD_FILE)"
+             pg_dump
+             -h postgres
+             -p 5432
+             -d mattermostdb
+             -U mattermostdbuser | gzip > /srv/mattermost-postgres/backups/mattermost-postgres-backup-$$(date "+%Y-%m-%d_%H-%M").gz
+             && tar -zcpf /srv/mattermost-application-data/backups/mattermost-application-data-backup-$$(date "+%Y-%m-%d_%H-%M").tar.gz /mattermost/data
+             && find /srv/mattermost-postgres/backups -type f -mtime +7 | xargs rm -f
+             && find /srv/mattermost-application-data/backups -type f -mtime +7 | xargs rm -f;
+             sleep 24h; done'
+    volumes:
+      - mattermost-data:/mattermost/data
+      # Application data backups location
+      - mattermost-data-backups:/srv/mattermost-application-data/backups
+      # Database backups location
+      - mattermost-postgres-backups:/srv/mattermost-postgres/backups
+    environment:
+      POSTGRES_PASSWORD_FILE: /run/secrets/mattermost-postgres-password
+    networks:
+      - mattermost-network
+    secrets:
+      - mattermost-postgres-password
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == worker
+      # Container resources (replace with yours)
+      resources:
+        limits:
+          cpus: '0.55'
+          memory: 1G
+        reservations:
+          cpus: '0.35'
+          memory: 512M
+    depends_on:
+      - postgres
+      - mattermost
