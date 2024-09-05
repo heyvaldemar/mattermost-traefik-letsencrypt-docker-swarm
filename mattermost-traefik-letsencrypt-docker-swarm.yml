@@ -198,6 +198,8 @@ services:
       - "traefik.udp.routers.mm-call-rtr.entrypoints=calls"
       - "traefik.udp.services.mm-call-svc.loadBalancer.server.port=8443"
       - "traefik.docker.network=traefik-network"
+    depends_on:
+      - postgres
 
   backups:
     <<: *default-opts
