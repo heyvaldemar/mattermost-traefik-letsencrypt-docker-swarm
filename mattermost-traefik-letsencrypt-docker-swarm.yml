@@ -182,23 +182,22 @@ services:
         reservations:
           cpus: '0.55'
           memory: 512M
-      labels:
-        - "traefik.enable=true"
-        # Mattermost URL (replace with yours)
-        - "traefik.http.routers.mattermost.rule=Host(`mattermost.heyvaldemar.net`)"
-        - "traefik.http.routers.mattermost.service=mattermost"
-        - "traefik.http.routers.mattermost.entrypoints=websecure"
-        - "traefik.http.services.mattermost.loadbalancer.server.port=8065"
-        - "traefik.http.routers.mattermost.tls=true"
-        - "traefik.http.routers.mattermost.tls.certresolver=letsencrypt"
-        - "traefik.http.services.mattermost.loadbalancer.passhostheader=true"
-        - "traefik.http.routers.mattermost.middlewares=compresstraefik"
-        - “traefik.udp.routers.mm-call-rtr.entrypoints=calls"
-        - "traefik.udp.routers.mm-call-rtr.service=mm-call-svc"
-        - "traefik.udp.services.mm-call-svc.loadBalancer.server.port=8443"
-        - "traefik.http.middlewares.compresstraefik.compress=true"
-    depends_on:
-      - postgres
+    labels:
+      - "traefik.enable=true"
+      # Mattermost URL (replace with yours)
+      - "traefik.http.routers.mattermost.rule=Host(`mattermost.heyvaldemar.net`)"
+      - "traefik.http.routers.mattermost.service=mattermost"
+      - "traefik.http.routers.mattermost.entrypoints=websecure"
+      - "traefik.http.services.mattermost.loadbalancer.server.port=8065"
+      - "traefik.http.routers.mattermost.tls=true"
+      - "traefik.http.routers.mattermost.tls.certresolver=letsencrypt"
+      - "traefik.http.services.mattermost.loadbalancer.passhostheader=true"
+      - "traefik.http.routers.mattermost.middlewares=compresstraefik"
+      - "traefik.http.middlewares.compresstraefik.compress=true"
+      - "traefik.udp.routers.mm-call-rtr.service=mm-call-svc"
+      - "traefik.udp.routers.mm-call-rtr.entrypoints=calls"
+      - "traefik.udp.services.mm-call-svc.loadBalancer.server.port=8443"
+      - "traefik.docker.network=traefik-network"
 
   backups:
     <<: *default-opts
