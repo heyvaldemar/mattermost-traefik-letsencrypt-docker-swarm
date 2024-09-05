@@ -69,7 +69,6 @@ volumes:
   mattermost-postgres:
   mattermost-data-backups:
   mattermost-postgres-backups:
-  traefik-certificates:
 
 secrets:
   mattermost-postgres-password:
